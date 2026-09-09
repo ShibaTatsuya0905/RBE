@@ -37,8 +37,16 @@ public class OrderService : IOrderService
             var food = await _foodRepo.GetByIdAsync(item.FoodId);
             if (food != null && food.IsAvailable)
             {
-                newOrder.OrderDetails.Add(new OrderDetail { FoodId = food.Id, Quantity = item.Quantity, UnitPrice = food.Price, Notes = item.Notes, Status = OrderStatus.Pending });
-                totalAmount += food.Price * item.Quantity;
+                var price = item.UnitPrice > 0 ? item.UnitPrice : food.Price;
+                newOrder.OrderDetails.Add(new OrderDetail
+                {
+                    FoodId = food.Id,
+                    Quantity = item.Quantity,
+                    UnitPrice = price,
+                    Notes = item.Notes,
+                    Status = OrderStatus.Pending
+                });
+                totalAmount += price * item.Quantity;
             }
         }
         newOrder.TotalAmount = totalAmount;
