@@ -17,7 +17,12 @@ public class OrderService : IOrderService
     private readonly IMapper _mapper;
     private readonly IHubContext<OrderHub> _hubContext;
 
-    public OrderService(IOrderRepository orderRepo, IFoodRepository foodRepo, RestaurantDbContext context, IMapper mapper, IHubContext<OrderHub> hubContext)
+    public OrderService(
+        IOrderRepository orderRepo,
+        IFoodRepository foodRepo,
+        RestaurantDbContext context,
+        IMapper mapper,
+        IHubContext<OrderHub> hubContext)
     {
         _orderRepo = orderRepo;
         _foodRepo = foodRepo;
@@ -26,11 +31,22 @@ public class OrderService : IOrderService
         _hubContext = hubContext;
     }
 
-    public async Task<IEnumerable<OrderDto>> GetActiveOrdersAsync() => _mapper.Map<IEnumerable<OrderDto>>(await _orderRepo.GetActiveOrdersAsync());
+    public async Task<IEnumerable<OrderDto>> GetAllOrdersAsync() =>
+        _mapper.Map<IEnumerable<OrderDto>>(await _orderRepo.GetAllOrdersAsync());
+
+    public async Task<IEnumerable<OrderDto>> GetActiveOrdersAsync() =>
+        _mapper.Map<IEnumerable<OrderDto>>(await _orderRepo.GetActiveOrdersAsync());
 
     public async Task<OrderDto> CreateOrderAsync(CreateOrderRequest request)
     {
-        var newOrder = new Order { TableId = request.TableId, OrderCode = $"ORD-{DateTime.Now:yyyyMMdd}-{Guid.NewGuid().ToString()[..4].ToUpper()}", Status = OrderStatus.Pending, CreatedAt = DateTime.UtcNow };
+        var newOrder = new Order
+        {
+            TableId = request.TableId,
+            OrderCode = $"ORD-{DateTime.Now:yyyyMMdd}-{Guid.NewGuid().ToString()[..4].ToUpper()}",
+            Status = OrderStatus.Pending,
+            CreatedAt = DateTime.UtcNow
+        };
+
         decimal totalAmount = 0;
         foreach (var item in request.Items)
         {
