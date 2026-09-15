@@ -32,7 +32,6 @@ public class DashboardController : ControllerBase
         {
             var dayOrders = await query.Where(o => o.CreatedAt >= today && o.CreatedAt < tomorrow).ToListAsync();
             periodRevenue = dayOrders.Sum(o => o.TotalAmount);
-
             for (int h = 8; h <= 22; h += 2)
             {
                 var hourRevenue = dayOrders.Where(o => o.CreatedAt.Hour >= h && o.CreatedAt.Hour < h + 2).Sum(o => o.TotalAmount) / 1000;
@@ -44,7 +43,6 @@ public class DashboardController : ControllerBase
             var startOfWeek = today.AddDays(-(int)today.DayOfWeek + (int)DayOfWeek.Monday);
             var weekOrders = await query.Where(o => o.CreatedAt >= startOfWeek && o.CreatedAt < startOfWeek.AddDays(7)).ToListAsync();
             periodRevenue = weekOrders.Sum(o => o.TotalAmount);
-
             var days = new[] { "Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun" };
             for (int i = 0; i < 7; i++)
             {
@@ -59,7 +57,6 @@ public class DashboardController : ControllerBase
             var endOfMonth = startOfMonth.AddMonths(1);
             var monthOrders = await query.Where(o => o.CreatedAt >= startOfMonth && o.CreatedAt < endOfMonth).ToListAsync();
             periodRevenue = monthOrders.Sum(o => o.TotalAmount);
-
             for (int w = 1; w <= 4; w++)
             {
                 var startW = startOfMonth.AddDays((w - 1) * 7);
@@ -72,10 +69,8 @@ public class DashboardController : ControllerBase
         {
             var allOrders = await query.ToListAsync();
             periodRevenue = allOrders.Sum(o => o.TotalAmount);
-
             var years = allOrders.Select(o => o.CreatedAt.Year).Distinct().OrderBy(y => y).ToList();
             if (!years.Any()) years.Add(now.Year);
-
             foreach (var year in years)
             {
                 var yearRevenue = allOrders.Where(o => o.CreatedAt.Year == year).Sum(o => o.TotalAmount) / 1000000;
@@ -88,7 +83,6 @@ public class DashboardController : ControllerBase
             var endOfYear = startOfYear.AddYears(1);
             var yearOrders = await query.Where(o => o.CreatedAt >= startOfYear && o.CreatedAt < endOfYear).ToListAsync();
             periodRevenue = yearOrders.Sum(o => o.TotalAmount);
-
             var months = new[] { "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec" };
             for (int m = 1; m <= 12; m++)
             {
@@ -105,7 +99,7 @@ public class DashboardController : ControllerBase
         var averageBill = todayOrdersCount > 0 ? todayPaidOrders.Sum(o => o.TotalAmount) / todayOrdersCount : 0;
 
         var orderDetailsList = await _context.OrderDetails
-            .Include(od => od.Food).ThenInclude(f => f.Category)
+            .Include(od => od.Food)
             .Where(od => od.Order.Status == OrderStatus.Paid)
             .ToListAsync();
 
@@ -145,6 +139,15 @@ public class DashboardController : ControllerBase
             .Select(g => new { name = g.Key, value = (double)g.Sum(od => od.Quantity * od.UnitPrice) })
             .ToList();
 
+        var feedbacks = await _context.Feedbacks.ToListAsync();
+        var radarData = new List<object>
+        {
+            new { subject = "Chất lượng món", score = feedbacks.Any() ? Math.Round(feedbacks.Average(f => f.FoodRating), 1) : 5.0, fullMark = 5 },
+            new { subject = "Thái độ phục vụ", score = feedbacks.Any() ? Math.Round(feedbacks.Average(f => f.ServiceRating), 1) : 5.0, fullMark = 5 },
+            new { subject = "Tốc độ lên món", score = feedbacks.Any() ? Math.Round(feedbacks.Average(f => f.SpeedRating), 1) : 5.0, fullMark = 5 },
+            new { subject = "Giá cả hợp lý", score = feedbacks.Any() ? Math.Round(feedbacks.Average(f => f.ValueRating), 1) : 5.0, fullMark = 5 }
+        };
+
         return Ok(new
         {
             todayRevenue = periodRevenue,
@@ -155,7 +158,19 @@ public class DashboardController : ControllerBase
             popularFoods,
             weeklyWorkload,
             kitchenWorkload,
-            revenueByCategory
+            revenueByCategory,
+            feedbackScores = radarData
         });
+    }
+
+    public class CreateFeedbackDto { public int TableId { get; set; } public int FoodRating { get; set; } public int ServiceRating { get; set; } public int SpeedRating { get; set; } public int ValueRating { get; set; } public string? Comment { get; set; } }
+
+    [HttpPost("feedback")]
+    public async Task<IActionResult> SubmitFeedback([FromBody] CreateFeedbackDto req)
+    {
+        var feedback = new Feedback { TableId = req.TableId, FoodRating = req.FoodRating, ServiceRating = req.ServiceRating, SpeedRating = req.SpeedRating, ValueRating = req.ValueRating, Comment = req.Comment };
+        _context.Feedbacks.Add(feedback);
+        await _context.SaveChangesAsync();
+        return Ok();
     }
 }
