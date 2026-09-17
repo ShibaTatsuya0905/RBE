@@ -106,4 +106,59 @@ public class OrderService : IOrderService
             await _hubContext.Clients.All.SendAsync("OrderStatusUpdated", orderId, order.Status.ToString());
         }
     }
+
+    public async Task<bool> ProcessPaymentWebhookAsync(string transferContent, decimal amount)
+    {
+        if (string.IsNullOrWhiteSpace(transferContent)) return false;
+
+        var activeOrders = await _context.Orders
+            .Include(o => o.Table)
+            .Where(o => o.Status != OrderStatus.Paid && o.Status != OrderStatus.Cancelled)
+            .ToListAsync();
+
+        var matchedOrder = activeOrders.FirstOrDefault(o =>
+        {
+            var rawOrderCode = o.OrderCode.Replace("-", "").ToUpper();
+            var rawContent = transferContent.Replace("-", "").ToUpper();
+            return rawContent.Contains(rawOrderCode) || rawContent.Contains(o.OrderCode.ToUpper());
+        });
+
+        if (matchedOrder == null)
+        {
+            return false;
+        }
+
+        if (amount < matchedOrder.TotalAmount)
+        {
+            return false;
+        }
+
+        matchedOrder.Status = OrderStatus.Paid;
+        matchedOrder.PaymentMethod = PaymentMethod.QrCode;
+        _context.Orders.Update(matchedOrder);
+
+        var table = await _context.Tables.FindAsync(matchedOrder.TableId);
+        if (table != null)
+        {
+            table.Status = TableStatus.Available;
+            _context.Tables.Update(table);
+        }
+
+        await _context.SaveChangesAsync();
+
+        await _hubContext.Clients.All.SendAsync("TableStatusUpdated", matchedOrder.TableId, 0);
+
+        await _hubContext.Clients.All.SendAsync("OrderStatusUpdated", matchedOrder.Id, OrderStatus.Paid.ToString());
+
+        await _hubContext.Clients.All.SendAsync("PaymentReceivedAuto", new
+        {
+            orderId = matchedOrder.Id,
+            orderCode = matchedOrder.OrderCode,
+            tableName = table?.Name ?? $"Bàn {matchedOrder.TableId}",
+            amount = amount
+        });
+
+        return true;
+    }
 }
+
